@@ -60,19 +60,12 @@ Where ‘northcarolina’ is is the character string that will replace
 string that will replace region in the
 
 ``` r
-nc <- sf::st_read(system.file("shape/nc.shp", package="sf"))
-#> Reading layer `nc' from data source 
-#>   `/Library/Frameworks/R.framework/Versions/4.2/Resources/library/sf/shape/nc.shp' 
-#>   using driver `ESRI Shapefile'
-#> Simple feature collection with 100 features and 14 fields
-#> Geometry type: MULTIPOLYGON
-#> Dimension:     XY
-#> Bounding box:  xmin: -84.32385 ymin: 33.88199 xmax: -75.45698 ymax: 36.58965
-#> Geodetic CRS:  NAD27
+chile_regiones <- chilemapas::generar_regiones()
 
-geo_reference_northcarolina_county <- nc |>
-  dplyr::select(county_name = NAME, fips = FIPS) |>
-  sf2stat:::sf_df_prep_for_stat(id_col_name = "county_name")
+
+geo_reference_chile_region <- chile_regiones |>
+  dplyr::select(region_codigo = codigo_region) |>
+  sf2stat:::sf_df_prep_for_stat(id_col_name = "region_codigo")
 #> Warning in st_point_on_surface.sfc(sf::st_zm(dplyr::pull(sf_df, geometry))):
 #> st_point_on_surface may not give correct results for longitude/latitude data
 #> Warning: The `x` argument of `as_tibble.matrix()` must have unique column names if
@@ -84,14 +77,14 @@ geo_reference_northcarolina_county <- nc |>
 #> Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
 #> generated.
 
-usethis::use_data(geo_reference_northcarolina_county, overwrite = T)
-#> ✔ Setting active project to '/Users/evangelinereynolds/Google Drive/r_packages/ggsomewhere'
-#> ✔ Saving 'geo_reference_northcarolina_county' to 'data/geo_reference_northcarolina_county.rda'
+usethis::use_data(geo_reference_chile_region, overwrite = T)
+#> ✔ Setting active project to '/Users/evangelinereynolds/Google Drive/r_packages/ggchile2'
+#> ✔ Saving 'geo_reference_chile_region' to 'data/geo_reference_chile_region.rda'
 #> • Document your data (see 'https://r-pkgs.org/data.html')
 ```
 
 ``` r
-readme2pkg::chunk_to_dir("nc_geo_reference_prep", 
+readme2pkg::chunk_to_dir("chile_geo_reference_prep", 
                          dir = "data-raw/")
 ```
 
@@ -99,11 +92,11 @@ readme2pkg::chunk_to_dir("nc_geo_reference_prep",
 
 ``` r
 readme2pkg::chunk_variants_to_dir(chunk_name = "stat_region_template",
-                                  file_name = "stat_county.R",
+                                  file_name = "stat_region.R",
                                   replace1 = "scope",
-                                  replacements1 = "northcarolina",
+                                  replacements1 = "chile",
                                   replace2 = "region",
-                                  replacements2 = "county")
+                                  replacements2 = "region")
 ```
 
 ``` r
@@ -164,38 +157,106 @@ stat_region <- function(
 ### test it out `stat_county()`
 
 ``` r
-source("./R/stat_county.R")
+source("./R/stat_region.R")
 
 library(ggplot2)
+library(tidyverse)
+#> ── Attaching core tidyverse packages ─────────────────── tidyverse 2.0.0.9000 ──
+#> ✔ dplyr     1.1.0     ✔ readr     2.1.4
+#> ✔ forcats   1.0.0     ✔ stringr   1.5.0
+#> ✔ lubridate 1.9.2     ✔ tibble    3.2.1
+#> ✔ purrr     1.0.1     ✔ tidyr     1.3.0
+#> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+#> ✖ dplyr::filter() masks stats::filter()
+#> ✖ dplyr::lag()    masks stats::lag()
+#> ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 
-nc <- sf::st_read(system.file("shape/nc.shp", package="sf"))
-#> Reading layer `nc' from data source 
-#>   `/Library/Frameworks/R.framework/Versions/4.2/Resources/library/sf/shape/nc.shp' 
-#>   using driver `ESRI Shapefile'
-#> Simple feature collection with 100 features and 14 fields
-#> Geometry type: MULTIPOLYGON
-#> Dimension:     XY
-#> Bounding box:  xmin: -84.32385 ymin: 33.88199 xmax: -75.45698 ymax: 36.58965
-#> Geodetic CRS:  NAD27
-
-nc |>
+chile_regiones |>
   sf::st_drop_geometry() |>
   ggplot() +
-  aes(fips = FIPS) +
-  stat_county() + 
-  aes(fill = BIR79)
-#> Joining with `by = join_by(fips)`
+  aes(region_codigo = codigo_region) +
+  stat_region(linewidth = .05) + 
+  aes(fill = codigo_region)
+#> Joining with `by = join_by(region_codigo)`
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+``` r
+
+chilemapas::censo_2017_zonas |>
+  count(region = stringr::str_extract(geocodigo, ".."), 
+        edad, 
+        wt = poblacion) %>% 
+  group_by(region) %>% 
+  mutate(prop = 100*n/sum(n)) ->
+chile_regiones_edades
+
+chile_regiones_edades |> 
+  pivot_wider(names_from = edad, values_from  = prop, id_cols = region) |>
+  janitor::clean_names() |>
+  ggplot() + 
+  aes(region_codigo = region) + 
+  stat_region(linewidth = .02) + 
+  aes(fill = x0_a_5) +
+  scale_fill_viridis_c()
+#> Joining with `by = join_by(region_codigo)`
+```
+
+![](README_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
+
+``` r
+
+last_plot() + 
+  aes(fill = x6_a_14)
+#> Joining with `by = join_by(region_codigo)`
+```
+
+![](README_files/figure-gfm/unnamed-chunk-6-3.png)<!-- -->
+
+``` r
+
+last_plot() + 
+  aes(fill = x15_a_64)
+#> Joining with `by = join_by(region_codigo)`
+```
+
+![](README_files/figure-gfm/unnamed-chunk-6-4.png)<!-- -->
+
+``` r
+
+last_plot() + 
+  aes(fill = x65_y_mas)
+#> Joining with `by = join_by(region_codigo)`
+```
+
+![](README_files/figure-gfm/unnamed-chunk-6-5.png)<!-- -->
+
+``` r
+  
+  
+chilemapas::censo_2017_comunas |>
+  count(region = stringr::str_extract(codigo_comuna, ".."), 
+      sexo, wt = poblacion) |> 
+  mutate(percent = n/sum(n), .by = region) |>
+  filter(sexo == "mujer") |>
+  ggplot() + 
+  aes(region_codigo = region) + 
+  stat_region(linewidth = .02) + 
+  aes(fill = percent) + 
+  scale_fill_viridis_c(option = "magma")
+#> Joining with `by = join_by(region_codigo)`
+```
+
+![](README_files/figure-gfm/unnamed-chunk-6-6.png)<!-- -->
 
 ## Use template to create useful derivitive functions
 
 ``` r
 readme2pkg::chunk_variants_to_dir(chunk_name = "geom_region_template",
-                                  file_name = "geom_county.R",
+                                  file_name = "geom_region.R",
                                   replace1 = "region",
-                                  replacements1 = "county")
+                                  replacements1 = "region")
 ```
 
 ``` r
@@ -219,68 +280,50 @@ stamp_region_label <- function(...){
 ### try those out
 
 ``` r
-source("./R/geom_county.R")
+source("./R/geom_region.R")
 
-nc |>
+chile_regiones |>
   sf::st_drop_geometry() |>
   ggplot() +
-  aes(fips = FIPS) +
-  geom_county() + 
-  geom_county_label(check_overlap = T,
+  aes(region_codigo = codigo_region) +
+  geom_region() + 
+  geom_region_label(check_overlap = T,
                     color = "grey85") +
-  aes(fill = BIR79) 
-#> Joining with `by = join_by(fips)`
-#> Joining with `by = join_by(fips)`
+  aes(fill = codigo_region) 
+#> Joining with `by = join_by(region_codigo)`
+#> Joining with `by = join_by(region_codigo)`
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ``` r
 
-last_plot() + 
-  stamp_county() + 
-  stamp_county_label()
-#> Joining with `by = join_by(fips)`
-#> Joining with `by = join_by(fips)`
+ggplot() + 
+  stamp_region() + 
+  stamp_region_label(check_overlap = T)
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
 
 ``` r
 
-ggplot() + 
-  stamp_county()
+last_plot() + 
+  stamp_region(keep_id = "05", fill = "darkred")
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-8-3.png)<!-- -->
 
-``` r
-
-last_plot() + 
-  stamp_county_label(check_overlap = T)
-```
-
-![](README_files/figure-gfm/unnamed-chunk-8-4.png)<!-- -->
-
-``` r
-
-last_plot() + 
-  stamp_county(keep_id = "Wake", fill = "darkred")
-```
-
-![](README_files/figure-gfm/unnamed-chunk-8-5.png)<!-- -->
-
 ## Use template to write convenience functions for each region
 
 ``` r
-locations <- geo_reference_northcarolina_county$county_name
+locations <- chile_regiones$codigo_region
 locations_snake <- tolower(locations) |> 
   stringr::str_replace_all(" ", "_")
 
 readme2pkg::chunk_variants_to_dir(chunk_name = "stamp_region_location", 
-                                  file_name = "stamp_county_location.R",
+                                  file_name = "stamp_region_location.R",
                                   replace1 = "region",
-                                  replacements1 = rep("county", length(locations)),
+                                  replacements1 = rep("region", length(locations)),
                               replace2 = "location",
                               replacements2 = locations_snake,
                               replace3 = "Location", 
@@ -312,14 +355,11 @@ stamp_region_label_location <- function(...){stamp_region_label(keep_id = 'Locat
 ### Try it out
 
 ``` r
-source("./R/stamp_county_location.R")
+source("./R/stamp_region_location.R")
 
-nc |>
-  sf::st_drop_geometry() |>
-  ggplot() +
-  aes(fips = FIPS) + 
-  stamp_county() + 
-  stamp_county_ashe(fill = "darkred")
+ggplot() +
+  stamp_region() + 
+  stamp_region_05(fill = "darkred")
 ```
 
 ![](README_files/figure-gfm/last_test-1.png)<!-- -->
@@ -327,7 +367,7 @@ nc |>
 ``` r
 
 last_plot() + 
-  stamp_county_label_ashe(color = "oldlace")
+  stamp_region_label_05(color = "oldlace")
 ```
 
 ![](README_files/figure-gfm/last_test-2.png)<!-- -->

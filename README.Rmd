@@ -55,19 +55,20 @@ geo_reference_northcarolina_county
 Where 'northcarolina' is is the character string that will replace 'scope' when using the code templates, and 'county' is the character string that will replace region in the 
 
 
-```{r nc_geo_reference_prep, eval = T}
-nc <- sf::st_read(system.file("shape/nc.shp", package="sf"))
+```{r chile_geo_reference_prep, eval = T}
+chile_regiones <- chilemapas::generar_regiones()
 
-geo_reference_northcarolina_county <- nc |>
-  dplyr::select(county_name = NAME, fips = FIPS) |>
-  sf2stat:::sf_df_prep_for_stat(id_col_name = "county_name")
 
-usethis::use_data(geo_reference_northcarolina_county, overwrite = T)
+geo_reference_chile_region <- chile_regiones |>
+  dplyr::select(region_codigo = codigo_region) |>
+  sf2stat:::sf_df_prep_for_stat(id_col_name = "region_codigo")
+
+usethis::use_data(geo_reference_chile_region, overwrite = T)
 ```
 
 
 ```{r, eval = F}
-readme2pkg::chunk_to_dir("nc_geo_reference_prep", 
+readme2pkg::chunk_to_dir("chile_geo_reference_prep", 
                          dir = "data-raw/")
 ```
 
@@ -75,11 +76,11 @@ readme2pkg::chunk_to_dir("nc_geo_reference_prep",
 
 ```{r}
 readme2pkg::chunk_variants_to_dir(chunk_name = "stat_region_template",
-                                  file_name = "stat_county.R",
+                                  file_name = "stat_region.R",
                                   replace1 = "scope",
-                                  replacements1 = "northcarolina",
+                                  replacements1 = "chile",
                                   replace2 = "region",
-                                  replacements2 = "county")
+                                  replacements2 = "region")
 ```
 
 
@@ -144,18 +145,57 @@ stat_region <- function(
 ### test it out `stat_county()`
 
 ```{r}
-source("./R/stat_county.R")
+source("./R/stat_region.R")
 
 library(ggplot2)
+library(tidyverse)
 
-nc <- sf::st_read(system.file("shape/nc.shp", package="sf"))
-
-nc |>
+chile_regiones |>
   sf::st_drop_geometry() |>
   ggplot() +
-  aes(fips = FIPS) +
-  stat_county() + 
-  aes(fill = BIR79)
+  aes(region_codigo = codigo_region) +
+  stat_region(linewidth = .05) + 
+  aes(fill = codigo_region)
+
+chilemapas::censo_2017_zonas |>
+  count(region = stringr::str_extract(geocodigo, ".."), 
+        edad, 
+        wt = poblacion) %>% 
+  group_by(region) %>% 
+  mutate(prop = 100*n/sum(n)) ->
+chile_regiones_edades
+
+chile_regiones_edades |> 
+  pivot_wider(names_from = edad, values_from  = prop, id_cols = region) |>
+  janitor::clean_names() |>
+  ggplot() + 
+  aes(region_codigo = region) + 
+  stat_region(linewidth = .02) + 
+  aes(fill = x0_a_5) +
+  scale_fill_viridis_c()
+
+last_plot() + 
+  aes(fill = x6_a_14)
+
+last_plot() + 
+  aes(fill = x15_a_64)
+
+last_plot() + 
+  aes(fill = x65_y_mas)
+  
+  
+chilemapas::censo_2017_comunas |>
+  count(region = stringr::str_extract(codigo_comuna, ".."), 
+      sexo, wt = poblacion) |> 
+  mutate(percent = n/sum(n), .by = region) |>
+  filter(sexo == "mujer") |>
+  ggplot() + 
+  aes(region_codigo = region) + 
+  stat_region(linewidth = .02) + 
+  aes(fill = percent) + 
+  scale_fill_viridis_c(option = "magma")
+  
+
 ```
 
 
@@ -163,9 +203,9 @@ nc |>
 
 ```{r}
 readme2pkg::chunk_variants_to_dir(chunk_name = "geom_region_template",
-                                  file_name = "geom_county.R",
+                                  file_name = "geom_region.R",
                                   replace1 = "region",
-                                  replacements1 = "county")
+                                  replacements1 = "region")
 ```
 
 
@@ -193,29 +233,23 @@ stamp_region_label <- function(...){
 ### try those out
 
 ```{r}
-source("./R/geom_county.R")
+source("./R/geom_region.R")
 
-nc |>
+chile_regiones |>
   sf::st_drop_geometry() |>
   ggplot() +
-  aes(fips = FIPS) +
-  geom_county() + 
-  geom_county_label(check_overlap = T,
+  aes(region_codigo = codigo_region) +
+  geom_region() + 
+  geom_region_label(check_overlap = T,
                     color = "grey85") +
-  aes(fill = BIR79) 
-
-last_plot() + 
-  stamp_county() + 
-  stamp_county_label()
+  aes(fill = codigo_region) 
 
 ggplot() + 
-  stamp_county()
+  stamp_region() + 
+  stamp_region_label(check_overlap = T)
 
 last_plot() + 
-  stamp_county_label(check_overlap = T)
-
-last_plot() + 
-  stamp_county(keep_id = "Wake", fill = "darkred")
+  stamp_region(keep_id = "05", fill = "darkred")
 
 ```
 
@@ -225,14 +259,14 @@ last_plot() +
 
 
 ```{r eval= F}
-locations <- geo_reference_northcarolina_county$county_name
+locations <- chile_regiones$codigo_region
 locations_snake <- tolower(locations) |> 
   stringr::str_replace_all(" ", "_")
 
 readme2pkg::chunk_variants_to_dir(chunk_name = "stamp_region_location", 
-                                  file_name = "stamp_county_location.R",
+                                  file_name = "stamp_region_location.R",
                                   replace1 = "region",
-                                  replacements1 = rep("county", length(locations)),
+                                  replacements1 = rep("region", length(locations)),
                               replace2 = "location",
                               replacements2 = locations_snake,
                               replace3 = "Location", 
@@ -266,15 +300,12 @@ stamp_region_label_location <- function(...){stamp_region_label(keep_id = 'Locat
 ### Try it out
 
 ```{r last_test}
-source("./R/stamp_county_location.R")
+source("./R/stamp_region_location.R")
 
-nc |>
-  sf::st_drop_geometry() |>
-  ggplot() +
-  aes(fips = FIPS) + 
-  stamp_county() + 
-  stamp_county_ashe(fill = "darkred")
+ggplot() +
+  stamp_region() + 
+  stamp_region_05(fill = "darkred")
 
 last_plot() + 
-  stamp_county_label_ashe(color = "oldlace")
+  stamp_region_label_05(color = "oldlace")
 ```
